@@ -23,7 +23,7 @@ Telegram support bot with ticket management system for handling user support req
 
 ```bash
 # Navigate to project directory
-cd /Users/muntello/pets/muntello.me/.worktrees/feature-support-bot
+cd /path/to/project
 
 # Create virtual environment
 python3.11 -m venv venv
@@ -52,7 +52,7 @@ nano .env
 Required environment variables:
 
 - `TELEGRAM_BOT_TOKEN` - Your bot token from @BotFather
-- `SUPPORT_CHAT_ID` - Support chat/group ID (e.g., -1005237566869)
+- `SUPPORT_CHAT_ID` - Support chat/group ID (e.g., -100XXXXXXXXXXXXX)
 - `WEBHOOK_URL` - Public webhook URL (e.g., https://support.muntello.me)
 - `DATABASE_URL` - Database connection string
 - `DEBUG` - Enable debug mode (True/False)
@@ -71,6 +71,7 @@ Ensure the directory exists and has proper permissions:
 ```bash
 sudo mkdir -p /var/lib/muntello
 sudo chown $USER:$USER /var/lib/muntello
+chmod 700 /var/lib/muntello  # Restrict to owner only
 ```
 
 ## Development
