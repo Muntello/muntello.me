@@ -8,6 +8,7 @@ aiogram==3.25.0
 # Database
 sqlalchemy==2.0.46
 aiosqlite==0.20.0
+greenlet==3.3.1
 
 # Configuration
 pydantic-settings==2.1.0
