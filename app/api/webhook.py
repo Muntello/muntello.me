@@ -35,7 +35,19 @@ async def telegram_webhook(
     data = await request.json()
     update = Update(**data)
 
-    logger.info("webhook_received", extra={"update_id": update.update_id})
+    # Log incoming update details for debugging
+    chat_id = None
+    if update.message:
+        chat_id = update.message.chat.id
+        chat_type = update.message.chat.type
+        logger.info("webhook_received", extra={
+            "update_id": update.update_id,
+            "chat_id": chat_id,
+            "chat_type": chat_type,
+            "from_user": update.message.from_user.id if update.message.from_user else None
+        })
+    else:
+        logger.info("webhook_received", extra={"update_id": update.update_id})
 
     # Inject session into context for handlers
     await dp.feed_update(bot, update, session=session)
