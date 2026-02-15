@@ -58,7 +58,7 @@ async def _migrate_db():
         await _add_column_if_missing(conn, "messages", "content_type", "VARCHAR(20) NOT NULL DEFAULT 'text'")
         await _add_column_if_missing(conn, "messages", "file_id", "VARCHAR(255)")
 
-        # Backfill from legacy telegram_message_id (if it exists)
+        # Backfill from legacy telegram_message_id, then drop it
         msg_cols = await _get_table_columns(conn, "messages")
         if "telegram_message_id" in msg_cols:
             await conn.execute(text(
@@ -69,6 +69,10 @@ async def _migrate_db():
                 "UPDATE messages SET support_chat_message_id = telegram_message_id "
                 "WHERE is_from_user = 0 AND support_chat_message_id IS NULL"
             ))
+            await conn.execute(text(
+                "ALTER TABLE messages DROP COLUMN telegram_message_id"
+            ))
+            logger.info("Dropped legacy column messages.telegram_message_id")
 
         # Pending messages table: content fields
         await _add_column_if_missing(conn, "pending_messages", "content_type", "VARCHAR(20) NOT NULL DEFAULT 'text'")

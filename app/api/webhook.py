@@ -1,3 +1,5 @@
+from collections import OrderedDict
+
 from fastapi import APIRouter, Request, Depends, HTTPException, status
 from aiogram import Bot, Dispatcher
 from aiogram.types import Update
@@ -9,6 +11,9 @@ import logging
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+_processed_updates: OrderedDict[int, bool] = OrderedDict()
+_MAX_CACHE_SIZE = 1000
 
 
 @router.post("/telegram")
@@ -35,6 +40,11 @@ async def telegram_webhook(
     data = await request.json()
     update = Update(**data)
 
+    # Deduplicate: skip already-processed updates (Telegram retries)
+    if update.update_id in _processed_updates:
+        logger.info("duplicate_update_skipped", extra={"update_id": update.update_id})
+        return {"ok": True}
+
     # Log incoming update details for debugging
     chat_id = None
     if update.message:
@@ -49,7 +59,11 @@ async def telegram_webhook(
     else:
         logger.info("webhook_received", extra={"update_id": update.update_id})
 
-    # Inject session into context for handlers
+    # Process update — cache only on success so Telegram retries work after failures
     await dp.feed_update(bot, update, session=session)
+
+    _processed_updates[update.update_id] = True
+    if len(_processed_updates) > _MAX_CACHE_SIZE:
+        _processed_updates.popitem(last=False)
 
     return {"ok": True}
