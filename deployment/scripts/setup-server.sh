@@ -36,6 +36,25 @@ fi
 
 # SSH hardening
 echo "🔒 Configuring SSH security..."
+
+# Check if deploy user has SSH key configured
+if [ ! -f /home/deploy/.ssh/authorized_keys ] || [ ! -s /home/deploy/.ssh/authorized_keys ]; then
+    echo "⚠️  WARNING: No SSH key found for deploy user!"
+    echo "    SSH password authentication will be disabled."
+    echo "    Without an SSH key, you will be locked out!"
+    echo ""
+    echo "To add SSH key:"
+    echo "  1. Copy your public key to /home/deploy/.ssh/authorized_keys"
+    echo "  2. Run: sudo chown deploy:deploy /home/deploy/.ssh/authorized_keys"
+    echo "  3. Run: sudo chmod 600 /home/deploy/.ssh/authorized_keys"
+    echo ""
+    read -p "Continue anyway? (yes/no): " confirm
+    if [ "$confirm" != "yes" ]; then
+        echo "Aborting. Please add SSH key first."
+        exit 1
+    fi
+fi
+
 sed -i 's/#PermitRootLogin yes/PermitRootLogin no/' /etc/ssh/sshd_config
 sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
 sed -i 's/PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
@@ -44,7 +63,12 @@ echo "SSH hardened: root login disabled, password auth disabled"
 
 # Setup firewall
 echo "🛡️ Configuring firewall..."
-ufw --force reset
+
+# Only reset if not already configured
+if ! ufw status | grep -q "Status: active"; then
+    ufw --force reset
+fi
+
 ufw default deny incoming
 ufw default allow outgoing
 ufw allow 22/tcp comment 'SSH'
