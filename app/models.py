@@ -15,6 +15,19 @@ class TicketStatus(str, Enum):
     CLOSED = "closed"
 
 
+class ContentType(str, Enum):
+    """Message content type enum"""
+    TEXT = "text"
+    PHOTO = "photo"
+    VIDEO = "video"
+    VOICE = "voice"
+    VIDEO_NOTE = "video_note"
+    STICKER = "sticker"
+    DOCUMENT = "document"
+    ANIMATION = "animation"
+    AUDIO = "audio"
+
+
 class User(Base):
     """Telegram user model"""
     __tablename__ = "users"
@@ -63,9 +76,18 @@ class Message(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     ticket_id = Column(Integer, ForeignKey("tickets.id"), nullable=False)
-    telegram_message_id = Column(Integer, nullable=False)
+
+    # Dual message IDs: track message in both chats
+    user_chat_message_id = Column(Integer, nullable=True)
+    support_chat_message_id = Column(Integer, nullable=True)
+
     is_from_user = Column(Boolean, default=True, nullable=False)
-    text = Column(Text, nullable=False)
+
+    # Content fields
+    content_type = Column(String(20), default=ContentType.TEXT, nullable=False)
+    text = Column(Text, nullable=True)
+    file_id = Column(String(255), nullable=True)
+
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     ticket = relationship("Ticket", back_populates="messages")
@@ -77,7 +99,12 @@ class PendingMessage(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    text = Column(Text, nullable=False)
+
+    # Content fields
+    content_type = Column(String(20), default=ContentType.TEXT, nullable=False)
+    text = Column(Text, nullable=True)
+    file_id = Column(String(255), nullable=True)
+
     telegram_message_id = Column(Integer, nullable=False)
     support_notification_id = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)

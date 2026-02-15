@@ -1,7 +1,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
 from aiogram.types import User as TgUser
-from app.models import User, Ticket, Message, PendingMessage, TicketStatus
+from app.models import User, Ticket, Message, PendingMessage, TicketStatus, ContentType
 from datetime import datetime
 import logging
 
@@ -80,20 +80,28 @@ async def create_ticket(session: AsyncSession, user_id: int) -> Ticket:
 async def add_message_to_ticket(
     session: AsyncSession,
     ticket: Ticket,
-    text: str,
-    telegram_message_id: int,
-    is_from_user: bool = True
+    content: dict,
+    user_chat_message_id: int | None = None,
+    support_chat_message_id: int | None = None,
+    is_from_user: bool = True,
 ) -> Message:
-    """Add message to ticket"""
+    """Add message to ticket with content metadata.
+
+    Args:
+        content: dict from extract_content() with keys:
+                 content_type, text, file_id
+    """
     message = Message(
         ticket_id=ticket.id,
-        telegram_message_id=telegram_message_id,
-        text=text,
-        is_from_user=is_from_user
+        user_chat_message_id=user_chat_message_id,
+        support_chat_message_id=support_chat_message_id,
+        is_from_user=is_from_user,
+        content_type=content["content_type"],
+        text=content.get("text") or "",
+        file_id=content.get("file_id"),
     )
     session.add(message)
 
-    # Update ticket status
     if is_from_user:
         ticket.status = TicketStatus.WAITING_SUPPORT
     else:
@@ -140,16 +148,18 @@ async def reopen_ticket(session: AsyncSession, ticket: Ticket) -> Ticket:
 async def create_pending_message(
     session: AsyncSession,
     user_id: int,
-    text: str,
+    content: dict,
     telegram_message_id: int,
-    support_notification_id: int | None = None
+    support_notification_id: int | None = None,
 ) -> PendingMessage:
-    """Create pending message"""
+    """Create pending message with content metadata."""
     pending = PendingMessage(
         user_id=user_id,
-        text=text,
+        content_type=content["content_type"],
+        text=content.get("text") or "",
+        file_id=content.get("file_id"),
         telegram_message_id=telegram_message_id,
-        support_notification_id=support_notification_id
+        support_notification_id=support_notification_id,
     )
     session.add(pending)
     await session.commit()
@@ -193,3 +203,27 @@ async def get_ticket_by_support_thread_id(
         select(Ticket).where(Ticket.support_thread_id == support_thread_id)
     )
     return result.scalar_one_or_none()
+
+
+async def get_ticket_by_support_message_id(
+    session: AsyncSession,
+    support_message_id: int,
+) -> Ticket | None:
+    """Find ticket by any message ID in the support chat.
+
+    Looks up Message.support_chat_message_id to find which ticket
+    a given support chat message belongs to. This enables replying
+    to ANY message in the thread, not just the first one.
+    """
+    result = await session.execute(
+        select(Message).where(
+            Message.support_chat_message_id == support_message_id
+        )
+    )
+    msg = result.scalar_one_or_none()
+    if msg:
+        ticket_result = await session.execute(
+            select(Ticket).where(Ticket.id == msg.ticket_id)
+        )
+        return ticket_result.scalar_one_or_none()
+    return None
