@@ -41,6 +41,17 @@ if [ ! -f "/etc/muntello/.env" ]; then
     exit 1
 fi
 
+# Create symlink to environment file
+echo "🔗 Linking environment file..."
+if [ ! -L ".env" ]; then
+    ln -s /etc/muntello/.env .env
+fi
+
+# Ensure database directory exists
+echo "📁 Ensuring database directory exists..."
+sudo mkdir -p /var/lib/muntello
+sudo chown deploy:deploy /var/lib/muntello
+
 # Initialize database
 echo "🗄️  Initializing database..."
 python -c "
