@@ -14,21 +14,6 @@ jobs:
     name: Run Tests
     runs-on: ubuntu-latest
 
-    services:
-      postgres:
-        image: postgres:15-alpine
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: test_db
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -47,13 +32,11 @@ jobs:
 
       - name: Run tests
         env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
+          DATABASE_URL: sqlite+aiosqlite:///test.db
           TELEGRAM_BOT_TOKEN: test_token_for_ci
-          TELEGRAM_CHANNEL_ID: -100123456789
-          LINEAR_API_KEY: test_linear_key_for_ci
-          LINEAR_TEAM_ID: test_team_id
-          WEBHOOK_SECRET: test_webhook_secret_32_chars_long
-          ENVIRONMENT: test
+          TELEGRAM_WEBHOOK_SECRET: test_webhook_secret_32_chars_long
+          SUPPORT_CHAT_ID: -100123456789
+          WEBHOOK_URL: https://test.example.com
         run: |
           pytest tests/ -v --cov=app --cov-report=term-missing --cov-report=xml
 
@@ -98,9 +81,6 @@ jobs:
 
             # Update dependencies
             sudo -u deploy /opt/muntello/venv/bin/pip install -r requirements.txt
-
-            # Run database migrations (if any)
-            # sudo -u deploy /opt/muntello/venv/bin/alembic upgrade head
 
             # Restart service
             sudo systemctl restart muntello-bot

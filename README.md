@@ -1,93 +1,87 @@
 # Muntello Support Bot
 
-A production-ready Telegram support bot with Linear integration for automated ticket management and customer support workflows.
+Telegram-бот для поддержки с автоматическим управлением тикетами и двусторонней коммуникацией между клиентами и командой поддержки.
 
 ## Features
 
 ### Core Functionality
-- **Automatic Ticket Creation**: Creates Linear issues from Telegram messages
-- **Two-Way Communication**: Bidirectional messaging between customers and support team
-- **Status Tracking**: Real-time ticket status updates (open/in-progress/resolved/closed)
-- **Linear Integration**: Syncs tickets with Linear project management
-- **Webhook Updates**: Real-time notifications for ticket changes
-- **Health Monitoring**: Built-in health checks and metrics
+- **Automatic Ticket Creation**: Создание тикетов из сообщений в Telegram
+- **Two-Way Communication**: Двусторонний обмен сообщениями между клиентами и поддержкой
+- **Status Tracking**: Отслеживание статусов (open/waiting_support/waiting_user/closed)
+- **Pending Messages**: Умная обработка сообщений от пользователей с закрытыми тикетами (переоткрытие / новый тикет)
+- **Health Monitoring**: Эндпоинты `/health` и `/metrics`
 
 ### Technical Features
-- FastAPI-based webhook server
-- PostgreSQL database with connection pooling
-- Comprehensive logging with structured output
-- Security-hardened deployment configuration
-- Automatic HTTPS with Caddy
-- CI/CD pipeline with GitHub Actions
+- FastAPI webhook-сервер с aiogram 3
+- SQLite (aiosqlite) для хранения данных
+- Structured JSON logging
+- Systemd + Caddy с автоматическим HTTPS
+- CI/CD через GitHub Actions
 
 ## Architecture
 
 ```
 app/
-├── main.py                 # FastAPI application and webhook setup
-├── config.py              # Configuration management with Pydantic
-├── utils/
-│   └── logging.py         # Structured logging utility
-├── database/
-│   ├── connection.py      # Database connection and session management
-│   ├── models.py          # SQLAlchemy ORM models
-│   └── service.py         # Database service layer
-├── telegram/
-│   ├── handlers.py        # Message and callback handlers
-│   └── keyboards.py       # Telegram keyboard utilities
-└── api/
-    ├── health.py          # Health check endpoints
-    └── webhook.py         # Telegram webhook handler
+├── main.py                 # FastAPI application, bot setup, lifespan
+├── config.py               # Pydantic Settings (env vars)
+├── models.py               # SQLAlchemy ORM models (User, Ticket, Message, PendingMessage)
+├── database.py             # Database engine, session, init_db()
+├── api/
+│   ├── health.py           # GET /health, GET /metrics
+│   └── webhook.py          # POST /webhook/telegram
+├── bot/
+│   ├── handlers.py         # Message and callback handlers
+│   ├── filters.py          # PrivateChatFilter, SupportChatFilter
+│   └── keyboards.py        # Inline keyboard utilities
+├── services/
+│   └── ticket_service.py   # Ticket business logic
+└── utils/
+    └── logger.py           # Structured logging setup
 
 deployment/
-├── scripts/               # Deployment automation
-│   ├── server-setup.sh    # Server initialization
-│   └── deploy.sh          # Application deployment
-├── systemd/              # Service configuration
+├── scripts/
+│   ├── setup-server.sh     # Server initialization (one-time)
+│   └── deploy-app.sh       # Application deployment
+├── systemd/
 │   └── muntello-bot.service
-└── caddy/                # Web server configuration
+└── caddy/
     └── Caddyfile
 
-tests/                     # Comprehensive test suite
+tests/
 ├── test_config.py
 ├── test_database.py
-├── test_handlers.py
-└── test_webhook.py
+├── test_models.py
+├── test_health_api.py
+└── test_ticket_service.py
 ```
 
 ## Prerequisites
 
 ### Production Server
-- Ubuntu 20.04+ or CentOS 8+
-- Python 3.11 or higher
-- PostgreSQL 15+
+- Ubuntu 22.04+
+- Python 3.11+
 - Caddy web server
-- Systemd for service management
+- Systemd
 
 ### Development Environment
 - Python 3.11+
-- PostgreSQL 15+ (or Docker for local testing)
 - Git
 
 ### External Services
-- Telegram Bot Token (from [@BotFather](https://t.me/botfather))
-- Linear account with API access
-- Domain name with DNS configured
+- Telegram Bot Token (от [@BotFather](https://t.me/botfather))
+- Домен с настроенным DNS
 
 ## Quick Start (Development)
 
 ### 1. Clone and Setup
 
 ```bash
-# Clone repository
 git clone https://github.com/Muntello/muntello.me.git
 cd muntello.me
 
-# Create virtual environment
 python3.11 -m venv venv
 source venv/bin/activate
 
-# Install dependencies
 pip install --upgrade pip
 pip install -r requirements.txt
 ```
@@ -95,95 +89,60 @@ pip install -r requirements.txt
 ### 2. Configure Environment
 
 ```bash
-# Copy environment template
 cp .env.example .env
-
-# Edit configuration
 nano .env
 ```
 
-**Required Environment Variables:**
+**Environment Variables:**
 
 ```bash
-# Telegram Configuration
-TELEGRAM_BOT_TOKEN=your_bot_token_here              # From @BotFather
-TELEGRAM_CHANNEL_ID=-100XXXXXXXXXXXXX               # Support channel ID
+# Telegram
+TELEGRAM_BOT_TOKEN=YOUR_BOT_TOKEN_HERE               # От @BotFather
+TELEGRAM_WEBHOOK_SECRET=GENERATE_RANDOM_32_CHAR_STRING  # openssl rand -hex 32
+SUPPORT_CHAT_ID=-100XXXXXXXXXXXXX                    # ID чата поддержки
+WEBHOOK_URL=https://support.muntello.me              # Public URL для webhook
 
-# Linear Configuration
-LINEAR_API_KEY=lin_api_XXXXXXXXXXXXXXXXXXXXXXXX     # Linear API key
-LINEAR_TEAM_ID=your-team-id                         # Linear team ID
+# Database
+DATABASE_URL=sqlite+aiosqlite:////var/lib/muntello/bot.db
 
-# Database Configuration
-DATABASE_URL=postgresql://user:password@localhost:5432/dbname
-
-# Security
-WEBHOOK_SECRET=random_32_character_secret_here      # Generate with: openssl rand -hex 32
-
-# Application Settings
-ENVIRONMENT=development                             # development/production
-LOG_LEVEL=INFO                                      # DEBUG/INFO/WARNING/ERROR
-DEBUG=True                                          # Enable debug mode
+# Application
+DEBUG=False
+LOG_LEVEL=INFO                                       # DEBUG/INFO/WARNING/ERROR
 ```
 
-### 3. Database Setup
-
-```bash
-# Using Docker (recommended for development)
-docker run -d \
-  --name postgres-dev \
-  -e POSTGRES_USER=muntello \
-  -e POSTGRES_PASSWORD=devpassword \
-  -e POSTGRES_DB=support_bot \
-  -p 5432:5432 \
-  postgres:15-alpine
-
-# Update DATABASE_URL in .env
-DATABASE_URL=postgresql://muntello:devpassword@localhost:5432/support_bot
-```
-
-### 4. Run Locally
+### 3. Run Locally
 
 ```bash
 # Start the application
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 
-# In another terminal, expose webhook (for local testing)
-# Using ngrok or similar tunnel service
+# Для локального тестирования webhook нужен туннель
 ngrok http 8000
-
-# Update WEBHOOK_SECRET in .env with ngrok URL
+# Обновить WEBHOOK_URL в .env на URL от ngrok
 ```
 
-### 5. Run Tests
+### 4. Run Tests
 
 ```bash
-# Run all tests
 pytest tests/ -v
 
-# Run with coverage
+# С покрытием
 pytest tests/ --cov=app --cov-report=html
-
-# Run specific test categories
-pytest tests/ -v -m unit           # Unit tests only
-pytest tests/ -v -m integration    # Integration tests only
 ```
 
 ## Production Deployment
 
 ### Automated Deployment
 
-The recommended deployment method uses the provided automation scripts:
-
 ```bash
-# 1. Run server setup (one-time)
+# 1. Настройка сервера (одноразово)
 ssh root@your-server.com
-bash deployment/scripts/server-setup.sh
+bash deployment/scripts/setup-server.sh
 
-# 2. Deploy application
-bash deployment/scripts/deploy.sh
+# 2. Деплой приложения
+ssh deploy@your-server.com
+bash deployment/scripts/deploy-app.sh
 ```
-
-See [deployment/scripts/README.md](deployment/scripts/README.md) for detailed instructions.
 
 ### Manual Deployment Steps
 
@@ -193,101 +152,75 @@ See [deployment/scripts/README.md](deployment/scripts/README.md) for detailed in
 #### 1. Server Preparation
 
 ```bash
-# Install system dependencies
 sudo apt update
-sudo apt install -y python3.11 python3.11-venv postgresql-15 caddy git
+sudo apt install -y python3.11 python3.11-venv caddy git
 
-# Create deployment user
 sudo useradd -r -m -d /opt/muntello -s /bin/bash deploy
 ```
 
-#### 2. Database Setup
+#### 2. Application Setup
 
 ```bash
-# Create database and user
-sudo -u postgres psql << EOF
-CREATE DATABASE support_bot;
-CREATE USER muntello WITH PASSWORD 'SECURE_PASSWORD_HERE';
-GRANT ALL PRIVILEGES ON DATABASE support_bot TO muntello;
-\c support_bot
-GRANT ALL ON SCHEMA public TO muntello;
-EOF
-```
-
-#### 3. Application Setup
-
-```bash
-# Clone repository
 sudo -u deploy git clone https://github.com/Muntello/muntello.me.git /opt/muntello
 cd /opt/muntello
 
-# Create virtual environment
 sudo -u deploy python3.11 -m venv venv
 sudo -u deploy venv/bin/pip install --upgrade pip
 sudo -u deploy venv/bin/pip install -r requirements.txt
 
-# Configure environment
+# Environment
 sudo mkdir -p /etc/muntello
 sudo cp .env.example /etc/muntello/.env
-sudo nano /etc/muntello/.env  # Edit with production values
+sudo nano /etc/muntello/.env  # Заполнить реальные значения
 sudo chown -R deploy:deploy /etc/muntello
 sudo chmod 600 /etc/muntello/.env
+
+# Database directory
+sudo mkdir -p /var/lib/muntello
+sudo chown deploy:deploy /var/lib/muntello
 ```
 
-#### 4. Systemd Service
+#### 3. Systemd Service
 
 ```bash
-# Install service file
 sudo cp deployment/systemd/muntello-bot.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable muntello-bot
 sudo systemctl start muntello-bot
-
-# Check status
 sudo systemctl status muntello-bot
 ```
 
-#### 5. Caddy Web Server
+#### 4. Caddy Web Server
 
-**Configure DNS first:**
 ```bash
-# Ensure DNS record points to your server
-dig support.muntello.me  # Should show your server IP
-```
+# Убедиться, что DNS настроен
+dig support.muntello.me
 
-**Install Caddy configuration:**
-```bash
-# Copy Caddyfile
+# Установить конфигурацию
 sudo cp deployment/caddy/Caddyfile /etc/caddy/
-
-# Reload Caddy
 sudo systemctl reload caddy
-
-# Check status
 sudo systemctl status caddy
 ```
-
-See [deployment/caddy/README.md](deployment/caddy/README.md) for detailed Caddy configuration.
 
 </details>
 
 ### GitHub Actions CI/CD
 
-The repository includes automated CI/CD pipeline. Configure these GitHub secrets:
+GitHub Secrets:
 
 ```
-SSH_PRIVATE_KEY        # SSH key for deployment server access
-SERVER_HOST            # Production server hostname/IP
-DEPLOY_USER            # Deployment user (typically 'deploy')
-TELEGRAM_BOT_TOKEN     # For deployment notifications
-TELEGRAM_CHANNEL_ID    # Channel for deployment status updates
+SSH_PRIVATE_KEY        # SSH key для доступа к серверу
+SERVER_HOST            # Hostname/IP сервера
+DEPLOY_USER            # Пользователь деплоя (deploy)
+TELEGRAM_BOT_TOKEN     # Для уведомлений о деплое
+TELEGRAM_CHANNEL_ID    # Канал для уведомлений
 ```
 
-Pipeline stages:
-1. **Test**: Run pytest with PostgreSQL service container
-2. **Deploy**: SSH deployment to production server (main branch only)
-3. **Verify**: Health checks and service verification
-4. **Notify**: Telegram notifications for deployment status
+Pipeline:
+1. **Test**: pytest на каждый push и PR
+2. **Deploy**: SSH деплой на сервер (только main branch)
+3. **Verify**: Health check и проверка сервиса
+4. **Notify**: Telegram уведомление о статусе деплоя
 
 ## Configuration Reference
 
@@ -295,102 +228,19 @@ Pipeline stages:
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `TELEGRAM_BOT_TOKEN` | Yes | - | Bot token from @BotFather |
-| `TELEGRAM_CHANNEL_ID` | Yes | - | Support channel ID (e.g., -100XXX) |
-| `LINEAR_API_KEY` | Yes | - | Linear API authentication key |
-| `LINEAR_TEAM_ID` | Yes | - | Linear team identifier |
-| `DATABASE_URL` | Yes | - | PostgreSQL connection string |
-| `WEBHOOK_SECRET` | Yes | - | 32+ character random secret |
-| `ENVIRONMENT` | No | `production` | Environment: development/production |
-| `LOG_LEVEL` | No | `INFO` | Logging level |
-| `DEBUG` | No | `False` | Debug mode flag |
+| `TELEGRAM_BOT_TOKEN` | Yes | - | Bot token от @BotFather |
+| `TELEGRAM_WEBHOOK_SECRET` | Yes | - | Secret для верификации webhook |
+| `SUPPORT_CHAT_ID` | No | `5237566869` | ID чата поддержки в Telegram |
+| `WEBHOOK_URL` | No | `https://support.muntello.me` | Public URL для webhook |
+| `DATABASE_URL` | No | `sqlite+aiosqlite:////var/lib/muntello/bot.db` | SQLite connection string |
+| `LOG_LEVEL` | No | `INFO` | Уровень логирования |
+| `DEBUG` | No | `False` | Debug mode |
 
-### Security Configuration
-
-**IMPORTANT**: Never commit real secrets to version control.
+### Security
 
 ```bash
-# Generate secure webhook secret
+# Генерация webhook secret
 openssl rand -hex 32
-
-# Generate secure database password
-openssl rand -base64 32
-```
-
-See [SECURITY-POLICY.md](docs/SECURITY-POLICY.md) for comprehensive security guidelines.
-
-## Development Guide
-
-### Project Structure
-
-- **app/**: Core application code
-  - `main.py`: FastAPI application initialization
-  - `config.py`: Configuration with validation
-  - `database/`: Database layer (models, connection, service)
-  - `telegram/`: Telegram bot handlers and utilities
-  - `api/`: REST API endpoints
-  - `utils/`: Shared utilities (logging, etc.)
-
-- **deployment/**: Production deployment configurations
-  - `scripts/`: Automated deployment scripts
-  - `systemd/`: Service configuration
-  - `caddy/`: Web server configuration
-
-- **tests/**: Comprehensive test suite
-  - Unit tests for individual components
-  - Integration tests for end-to-end workflows
-  - Database tests with fixtures
-
-### Running Tests
-
-```bash
-# All tests with verbose output
-pytest tests/ -v
-
-# With coverage report
-pytest tests/ --cov=app --cov-report=term-missing --cov-report=html
-
-# Specific test categories
-pytest tests/ -m unit           # Unit tests
-pytest tests/ -m integration    # Integration tests
-pytest tests/ -m db             # Database tests
-
-# Specific test files
-pytest tests/test_handlers.py -v
-pytest tests/test_database.py -v
-```
-
-### Code Quality
-
-The project uses Ruff for linting and formatting:
-
-```bash
-# Check code quality
-ruff check app/ tests/
-
-# Auto-fix issues
-ruff check --fix app/ tests/
-
-# Format code
-ruff format app/ tests/
-```
-
-### Database Migrations
-
-Currently using direct SQLAlchemy models. For future migrations:
-
-```bash
-# Install Alembic
-pip install alembic
-
-# Initialize Alembic
-alembic init alembic
-
-# Create migration
-alembic revision --autogenerate -m "description"
-
-# Apply migration
-alembic upgrade head
 ```
 
 ## Monitoring and Operations
@@ -398,239 +248,134 @@ alembic upgrade head
 ### Health Checks
 
 ```bash
-# Application health
-curl http://localhost:8000/health
-
-# Detailed health with metrics
-curl http://localhost:8000/health?detailed=true
-
-# Via public endpoint
+# Health check
 curl https://support.muntello.me/health
+# {"status":"healthy","timestamp":"...","database":"ok","version":"1.0.0"}
+
+# Metrics
+curl https://support.muntello.me/metrics
+# {"active_tickets":1,"messages_last_hour":21,"timestamp":"..."}
 ```
 
 ### Logs
 
 ```bash
-# Application logs (systemd)
+# Логи бота
 sudo journalctl -u muntello-bot -f
-
-# Last 100 lines
 sudo journalctl -u muntello-bot -n 100
-
-# Logs since specific time
 sudo journalctl -u muntello-bot --since "1 hour ago"
 
-# Filter by log level
-sudo journalctl -u muntello-bot -p err
-
-# Caddy logs
-sudo tail -f /var/log/caddy/support.log
+# Логи Caddy
+sudo tail -f /var/log/caddy/support.muntello.me.log
 ```
 
 ### Service Management
 
 ```bash
-# Check service status
 sudo systemctl status muntello-bot
-
-# Start/stop/restart service
-sudo systemctl start muntello-bot
+sudo systemctl restart muntello-bot
 sudo systemctl stop muntello-bot
-sudo systemctl restart muntello-bot
-
-# Reload after code changes
-sudo systemctl restart muntello-bot
-
-# Check service logs
 sudo journalctl -u muntello-bot --since today
 ```
 
 ### Database Management
 
 ```bash
-# Connect to database
-psql postgresql://muntello:password@localhost/support_bot
+# Подключение к БД (на сервере через Python, sqlite3 не установлен)
+/opt/muntello/venv/bin/python -c "
+import sqlite3
+conn = sqlite3.connect('/var/lib/muntello/bot.db')
+cursor = conn.cursor()
+cursor.execute('SELECT * FROM tickets')
+for row in cursor.fetchall():
+    print(row)
+conn.close()
+"
 
-# Backup database
-pg_dump -U muntello support_bot > backup.sql
+# Бэкап
+cp /var/lib/muntello/bot.db /var/lib/muntello/bot.db.backup
 
-# Restore database
-psql -U muntello support_bot < backup.sql
-
-# View active connections
-SELECT * FROM pg_stat_activity WHERE datname = 'support_bot';
+# Размер БД
+ls -lh /var/lib/muntello/bot.db
 ```
 
 ## Troubleshooting
 
-### Common Issues
+### Bot not receiving messages
 
-**Bot not receiving messages:**
-1. Check webhook is set: `curl https://api.telegram.org/bot<TOKEN>/getWebhookInfo`
-2. Verify DNS and HTTPS working: `curl https://support.muntello.me/health`
-3. Check Caddy logs: `sudo journalctl -u caddy -f`
-4. Verify service running: `sudo systemctl status muntello-bot`
+1. Проверить webhook: `curl https://api.telegram.org/bot<TOKEN>/getWebhookInfo`
+2. Проверить DNS и HTTPS: `curl https://support.muntello.me/health`
+3. Проверить Caddy: `sudo journalctl -u caddy -f`
+4. Проверить сервис: `sudo systemctl status muntello-bot`
 
-**Database connection errors:**
-1. Check PostgreSQL running: `sudo systemctl status postgresql`
-2. Verify credentials in `/etc/muntello/.env`
-3. Test connection: `psql -U muntello -h localhost support_bot`
-4. Check database logs: `sudo journalctl -u postgresql -f`
+### Database errors
 
-**Linear integration not working:**
-1. Verify API key is valid (test with Linear API)
-2. Check team ID is correct
-3. Review application logs for Linear API errors
-4. Ensure network can reach Linear API endpoints
+1. Проверить файл БД: `ls -la /var/lib/muntello/bot.db`
+2. Проверить права: `stat /var/lib/muntello/bot.db`
+3. Проверить `.env`: `cat /etc/muntello/.env`
+4. Проверить логи: `sudo journalctl -u muntello-bot --since "10 min ago"`
 
 ### Debug Mode
 
-Enable debug mode for verbose logging:
-
 ```bash
-# Edit environment file
 sudo nano /etc/muntello/.env
+# Установить DEBUG=True и LOG_LEVEL=DEBUG
 
-# Set DEBUG=True and LOG_LEVEL=DEBUG
-DEBUG=True
-LOG_LEVEL=DEBUG
-
-# Restart service
 sudo systemctl restart muntello-bot
-
-# Watch detailed logs
 sudo journalctl -u muntello-bot -f
 ```
 
-## Testing Strategy
+## Server Info
 
-### Test Categories
-
-- **Unit Tests** (`-m unit`): Test individual functions and classes
-- **Integration Tests** (`-m integration`): Test component interactions
-- **Database Tests** (`-m db`): Test database operations with fixtures
-
-### Test Coverage
-
-The project maintains high test coverage:
-
-```bash
-# Generate coverage report
-pytest tests/ --cov=app --cov-report=html
-
-# View report
-open htmlcov/index.html
-```
-
-### CI/CD Testing
-
-GitHub Actions automatically runs tests on:
-- Every push to feature branches
-- Every pull request to main
-- Before production deployment
+| Parameter | Value |
+|-----------|-------|
+| Domain | support.muntello.me |
+| OS | Ubuntu 22.04 |
+| Python | 3.11 |
+| App path | /opt/muntello |
+| Config | /etc/muntello/.env |
+| Database | /var/lib/muntello/bot.db |
+| Logs | journalctl -u muntello-bot |
 
 ## Contributing
 
-### Development Workflow
+### Workflow
 
-1. Create feature branch: `git checkout -b feature/your-feature`
-2. Make changes and add tests
-3. Run tests: `pytest tests/ -v`
-4. Check code quality: `ruff check app/ tests/`
-5. Commit changes: `git commit -m "feat: description"`
-6. Push and create pull request
+1. `git checkout -b feature/your-feature`
+2. Внести изменения и добавить тесты
+3. `pytest tests/ -v`
+4. `ruff check app/ tests/`
+5. `git commit -m "feat: description"`
+6. Push и создать PR
 
-### Commit Message Format
+### Commit Format
 
-Follow conventional commits:
 - `feat:` New features
 - `fix:` Bug fixes
-- `docs:` Documentation changes
-- `test:` Test additions/changes
-- `refactor:` Code refactoring
-- `chore:` Maintenance tasks
-
-## Security
-
-### Reporting Security Issues
-
-Please report security vulnerabilities to security@muntello.me. Do not create public issues for security concerns.
-
-### Security Best Practices
-
-1. **Never commit secrets** to version control
-2. **Use strong passwords** for database and services
-3. **Keep dependencies updated** regularly
-4. **Monitor logs** for suspicious activity
-5. **Review access controls** periodically
-
-See [SECURITY-POLICY.md](docs/SECURITY-POLICY.md) for detailed security guidelines.
-
-## Performance Considerations
-
-### Database Optimization
-
-- Connection pooling configured for concurrent requests
-- Indexes on frequently queried columns (ticket_id, chat_id)
-- Automatic connection recycling (1 hour)
-
-### Resource Limits
-
-Configured in systemd service:
-- File descriptors: 65536
-- Private /tmp directory
-- Read-only system directories
-- Restricted network access
-
-## Roadmap
-
-### Planned Features
-- [ ] Multi-language support
-- [ ] Automated ticket categorization
-- [ ] Customer satisfaction ratings
-- [ ] Analytics dashboard
-- [ ] SLA tracking and alerts
-- [ ] Attachment support
-
-### Under Consideration
-- Support for multiple Linear teams
-- Integration with other ticketing systems
-- Advanced workflow automation
-- Customer self-service portal
+- `docs:` Documentation
+- `test:` Tests
+- `refactor:` Refactoring
+- `chore:` Maintenance
 
 ## FAQ
 
-**Q: Can I use this with multiple Telegram bots?**
-A: The current implementation supports one bot instance. For multiple bots, deploy separate instances with different configurations.
+**Q: Какая база данных используется?**
+A: SQLite через aiosqlite. Файл БД хранится в `/var/lib/muntello/bot.db`.
 
-**Q: What database backends are supported?**
-A: PostgreSQL is the primary supported database. SQLite can be used for development/testing but is not recommended for production.
+**Q: Как кастомизировать workflow тикетов?**
+A: Изменить статусы в `app/models.py` (TicketStatus enum) и логику обработки в `app/bot/handlers.py`.
 
-**Q: How do I migrate from development to production?**
-A: Use the automated deployment scripts in `deployment/scripts/`. They handle all migration steps automatically.
-
-**Q: Can I customize the ticket workflow?**
-A: Yes, modify the ticket status transitions in `app/database/models.py` and handler logic in `app/telegram/handlers.py`.
-
-**Q: How do I handle high traffic?**
-A: Scale horizontally by running multiple instances behind a load balancer, ensuring all instances share the same PostgreSQL database.
+**Q: Можно ли запустить несколько ботов?**
+A: Да, деплоить отдельные инстансы с разными конфигурациями.
 
 ## License
 
 Proprietary - All rights reserved
 
-## Support
-
-For issues or questions:
-- Create an issue in the GitHub repository
-- Contact the development team
-- Email: support@muntello.me
-
 ## Acknowledgments
 
 Built with:
-- [FastAPI](https://fastapi.tiangolo.com/) - Modern web framework
-- [python-telegram-bot](https://python-telegram-bot.org/) - Telegram Bot API wrapper
+- [FastAPI](https://fastapi.tiangolo.com/) - Web framework
+- [aiogram](https://aiogram.dev/) - Telegram Bot API
 - [SQLAlchemy](https://www.sqlalchemy.org/) - Database ORM
 - [Caddy](https://caddyserver.com/) - Web server with automatic HTTPS
-- [PostgreSQL](https://www.postgresql.org/) - Database system
