@@ -1,3 +1,5 @@
+import re
+
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -153,7 +155,31 @@ async def handle_support_reply(message: Message, session: AsyncSession):
             session, reply_to_id
         )
 
+    # Fallback: parse ticket ID from bot's own message text ("Обращение #N")
+    reply_msg = message.reply_to_message
+    if (
+        not ticket
+        and reply_msg
+        and reply_msg.from_user
+        and reply_msg.from_user.is_bot
+        and reply_msg.text
+    ):
+        match = re.search(r'Обращение #(\d+)', reply_msg.text)
+        if match:
+            ticket = await ticket_service.get_ticket_by_id(session, int(match.group(1)))
+            if ticket and ticket.status == TicketStatus.CLOSED:
+                ticket = None
+            if ticket:
+                logger.info("ticket_found_by_text_fallback", extra={
+                    "ticket_id": ticket.id, "reply_to_message_id": reply_to_id,
+                })
+
     if not ticket:
+        logger.warning("ticket_lookup_failed", extra={
+            "reply_to_message_id": reply_to_id,
+            "reply_text_preview": (message.reply_to_message.text or "")[:100]
+                if message.reply_to_message else None,
+        })
         await message.reply("⚠️ Не найдено обращение для этого сообщения")
         return
 
