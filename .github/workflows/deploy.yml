@@ -1,0 +1,164 @@
+name: Deploy Support Bot
+
+on:
+  push:
+    branches:
+      - main
+      - feature/support-bot
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: test_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-asyncio pytest-cov httpx
+
+      - name: Run tests
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
+          TELEGRAM_BOT_TOKEN: test_token_for_ci
+          TELEGRAM_CHANNEL_ID: -100123456789
+          LINEAR_API_KEY: test_linear_key_for_ci
+          LINEAR_TEAM_ID: test_team_id
+          WEBHOOK_SECRET: test_webhook_secret_32_chars_long
+          ENVIRONMENT: test
+        run: |
+          pytest tests/ -v --cov=app --cov-report=term-missing --cov-report=xml
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./coverage.xml
+          fail_ci_if_error: false
+
+  deploy:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Add server to known hosts
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H ${{ secrets.SERVER_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Deploy to server
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          ssh ${DEPLOY_USER}@${SERVER_HOST} << 'ENDSSH'
+            set -e
+            cd /opt/muntello
+
+            # Pull latest code
+            sudo -u deploy git fetch origin
+            sudo -u deploy git reset --hard origin/main
+
+            # Update dependencies
+            sudo -u deploy /opt/muntello/venv/bin/pip install -r requirements.txt
+
+            # Run database migrations (if any)
+            # sudo -u deploy /opt/muntello/venv/bin/alembic upgrade head
+
+            # Restart service
+            sudo systemctl restart muntello-bot
+
+            # Wait for health check
+            sleep 5
+            curl -f http://localhost:8000/health || exit 1
+
+            echo "Deployment successful!"
+          ENDSSH
+
+      - name: Verify deployment
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          ssh ${DEPLOY_USER}@${SERVER_HOST} << 'ENDSSH'
+            # Check service status
+            systemctl is-active --quiet muntello-bot || exit 1
+
+            # Check health endpoint
+            curl -f http://localhost:8000/health || exit 1
+
+            # Check logs for errors
+            ! sudo journalctl -u muntello-bot --since "1 minute ago" | grep -i "error" || exit 1
+
+            echo "Verification successful!"
+          ENDSSH
+
+  notify:
+    name: Notify Deployment Status
+    runs-on: ubuntu-latest
+    needs: deploy
+    if: always() && github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - name: Send Telegram notification
+        if: needs.deploy.result == 'success'
+        env:
+          COMMIT_SHA: ${{ github.sha }}
+          COMMIT_AUTHOR: ${{ github.actor }}
+          BRANCH_NAME: ${{ github.ref_name }}
+        run: |
+          curl -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
+            -d chat_id="${{ secrets.TELEGRAM_CHANNEL_ID }}" \
+            -d parse_mode="Markdown" \
+            -d text="✅ *Deployment Successful*%0A%0ACommit: \`${COMMIT_SHA}\`%0AAuthor: ${COMMIT_AUTHOR}%0ABranch: ${BRANCH_NAME}"
+
+      - name: Send failure notification
+        if: needs.deploy.result == 'failure'
+        env:
+          COMMIT_SHA: ${{ github.sha }}
+          COMMIT_AUTHOR: ${{ github.actor }}
+          BRANCH_NAME: ${{ github.ref_name }}
+          REPO_NAME: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          curl -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
+            -d chat_id="${{ secrets.TELEGRAM_CHANNEL_ID }}" \
+            -d parse_mode="Markdown" \
+            -d text="❌ *Deployment Failed*%0A%0ACommit: \`${COMMIT_SHA}\`%0AAuthor: ${COMMIT_AUTHOR}%0ABranch: ${BRANCH_NAME}%0A%0ACheck: https://github.com/${REPO_NAME}/actions/runs/${RUN_ID}"
