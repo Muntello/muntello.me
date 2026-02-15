@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Request, Depends
+from fastapi import APIRouter, Request, Depends, HTTPException, status
 from aiogram import Bot, Dispatcher
 from aiogram.types import Update
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_session
+from app.config import settings
 import logging
 
 
@@ -16,6 +17,17 @@ async def telegram_webhook(
     session: AsyncSession = Depends(get_session)
 ):
     """Telegram webhook endpoint"""
+    # Verify webhook secret
+    secret_header = request.headers.get("X-Telegram-Bot-Api-Secret-Token")
+    if secret_header != settings.TELEGRAM_WEBHOOK_SECRET:
+        logger.warning("Invalid webhook secret", extra={
+            "ip": request.client.host if request.client else "unknown"
+        })
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invalid secret token"
+        )
+
     bot: Bot = request.app.state.bot
     dp: Dispatcher = request.app.state.dp
 

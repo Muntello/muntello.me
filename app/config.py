@@ -7,6 +7,7 @@ class Settings(BaseSettings):
 
     # Telegram
     TELEGRAM_BOT_TOKEN: str
+    TELEGRAM_WEBHOOK_SECRET: str  # Secret token for webhook security
     SUPPORT_CHAT_ID: int = 5237566869
     WEBHOOK_URL: str = "https://support.muntello.me"
 
