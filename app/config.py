@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     WEBHOOK_URL: str = "https://support.muntello.me"
 
     # Database
-    DATABASE_URL: str = "sqlite+aiosqlite:///var/lib/muntello/bot.db"
+    DATABASE_URL: str = "sqlite+aiosqlite:////var/lib/muntello/bot.db"
 
     # Application
     DEBUG: bool = False
