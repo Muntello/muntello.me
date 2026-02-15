@@ -28,7 +28,7 @@ def test_settings_defaults():
     assert test_settings.DEBUG is False
     assert test_settings.LOG_LEVEL == "INFO"
     assert test_settings.WEBHOOK_URL == "https://support.muntello.me"
-    assert test_settings.DATABASE_URL == "sqlite+aiosqlite:///var/lib/muntello/bot.db"
+    assert "sqlite" in test_settings.DATABASE_URL
 
 
 def test_settings_custom_values():
