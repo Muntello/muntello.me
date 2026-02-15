@@ -1,0 +1,24 @@
+[Unit]
+Description=Muntello Support Bot
+After=network.target
+
+[Service]
+Type=simple
+User=deploy
+Group=deploy
+WorkingDirectory=/opt/muntello
+Environment="PATH=/opt/muntello/venv/bin"
+EnvironmentFile=/etc/muntello/.env
+ExecStart=/opt/muntello/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
+
+# Restart policy
+Restart=always
+RestartSec=10
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=muntello-bot
+
+[Install]
+WantedBy=multi-user.target
